@@ -3,6 +3,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import faiss
 import openai
+import os
 
 app = Flask(__name__)
 
@@ -24,8 +25,10 @@ except Exception as e:
     print(f"Error loading text chunks: {e}")
     text_chunks = []
 
-# OpenAI API key setup
-openai.api_key = 'your-openai-api-key'
+# OpenAI API key setup from environment variable
+openai.api_key = os.getenv('OPENAI_API_KEY')
+if not openai.api_key:
+    raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
