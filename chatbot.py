@@ -65,14 +65,14 @@ def chat():
         prompt = f"The following is a relevant context extracted from documents:\n\n{context}\n\nUser query: {user_query}\n\nProvide a detailed response based on the context."
         
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt},
             ]
         )
         
-        # Extract the response from GPT-4
+        # Extract the response from GPT-4o
         gpt_response = response['choices'][0]['message']['content']
         
         # Step 4: Return the response to the frontend
@@ -80,7 +80,7 @@ def chat():
     
     except openai.error.OpenAIError as e:
         # Handle errors from the OpenAI API
-        return jsonify({"error": f"Error communicating with GPT-4: {str(e)}"}), 500
+        return jsonify({"error": f"Error communicating with GPT-4o: {str(e)}"}), 500
     
     except Exception as e:
         # Handle any other unexpected errors
