@@ -1,70 +1,77 @@
 import os
-import PyPDF2
+import fitz  # PyMuPDF
 from sentence_transformers import SentenceTransformer
-import faiss
 import numpy as np
+import faiss
 
 # Initialize the sentence transformer model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Directory containing PDFs
-pdf_directory = './pdfs'
+def load_pdfs_from_directory(directory):
+    pdf_texts = {}
+    for filename in os.listdir(directory):
+        if filename.endswith('.pdf'):
+            filepath = os.path.join(directory, filename)
+            pdf_texts[filename] = extract_text_from_pdf(filepath)
+    return pdf_texts
 
-# Function to extract text from a PDF
-def extract_text_from_pdf(pdf_path):
-    with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfReader(file)
-        text = ''
-        for page_num in range(len(reader.pages)):
-            page = reader.pages[page_num]
-            text += page.extract_text()
+def extract_text_from_pdf(filepath):
+    text = ""
+    with fitz.open(filepath) as pdf:
+        for page in pdf:
+            text += page.get_text()
     return text
 
-# Function to chunk text into smaller pieces
-def chunk_text(text, max_chunk_size=500):
-    words = text.split()
+def chunk_text(text, chunk_size=500):
     chunks = []
-    current_chunk = []
-
-    for word in words:
-        if len(current_chunk) + len(word) > max_chunk_size:
-            chunks.append(' '.join(current_chunk))
-            current_chunk = [word]
-        else:
-            current_chunk.append(word)
-
-    if current_chunk:
-        chunks.append(' '.join(current_chunk))
-
+    while len(text) > chunk_size:
+        split_at = text.rfind(" ", 0, chunk_size)
+        if split_at == -1:  # No space found, force split
+            split_at = chunk_size
+        chunks.append(text[:split_at])
+        text = text[split_at:]
+    chunks.append(text)
     return chunks
 
-# Function to embed chunks and store them
-def embed_and_store_chunks(chunks, index):
-    embeddings = model.encode(chunks, convert_to_tensor=True, show_progress_bar=True)
-    embeddings = embeddings.cpu().detach().numpy()
+def generate_embeddings(chunks):
+    embeddings = model.encode(chunks)
+    return embeddings
+
+def store_embeddings_with_faiss(embeddings, output_dir='faiss_index'):
+    os.makedirs(output_dir, exist_ok=True)
+    
+    d = embeddings.shape[1]  # Dimension of the embeddings
+    index = faiss.IndexFlatL2(d)  # Build the index (L2 distance)
 
     # Add embeddings to the index
     index.add(embeddings)
+    
+    # Save the FAISS index
+    faiss.write_index(index, os.path.join(output_dir, 'faiss.index'))
+    print(f"FAISS index with {index.ntotal} embeddings saved.")
 
-# Initialize FAISS index
-embedding_dim = model.get_sentence_embedding_dimension()
-index = faiss.IndexFlatL2(embedding_dim)
-
-# Process each PDF in the directory
-for pdf_file in os.listdir(pdf_directory):
-    if pdf_file.endswith('.pdf'):
-        pdf_path = os.path.join(pdf_directory, pdf_file)
-        print(f'Processing {pdf_file}...')
-        
-        # Extract text from PDF
-        text = extract_text_from_pdf(pdf_path)
+def process_pdf_directory(directory, chunk_size=500):
+    pdf_texts = load_pdfs_from_directory(directory)
+    
+    all_embeddings = []
+    for filename, text in pdf_texts.items():
+        print(f"Processing {filename}...")
         
         # Chunk the text
-        chunks = chunk_text(text)
+        chunks = chunk_text(text, chunk_size=chunk_size)
         
-        # Embed and store the chunks
-        embed_and_store_chunks(chunks, index)
+        # Generate embeddings
+        embeddings = generate_embeddings(chunks)
+        all_embeddings.append(embeddings)
 
-# Save the FAISS index to a file
-faiss.write_index(index, 'pdf_embeddings.index')
-print('All PDFs processed and embeddings stored.')
+    # Combine all embeddings into one array
+    all_embeddings = np.vstack(all_embeddings)
+
+    # Store the embeddings in a FAISS index
+    store_embeddings_with_faiss(all_embeddings)
+
+    print("Processing complete.")
+
+# usage:
+if __name__ == "__main__":
+    process_pdf_directory('path_to_pdf_directory')
