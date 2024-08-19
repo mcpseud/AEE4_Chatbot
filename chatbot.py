@@ -35,6 +35,8 @@ def chat():
     try:
         data = request.json
         user_query = data.get('message', '').strip()
+        history = data.get('history', [])
+
         if not user_query:
             return jsonify({"error": "Empty query received"}), 400
 
@@ -61,15 +63,16 @@ def chat():
         # Combine the relevant texts into a single context
         context = "\n".join(relevant_texts)
         
-        # Step 3: Send the query and context to GPT-4
-        prompt = f"The following is a relevant context extracted from documents:\n\n{context}\n\nUser query: {user_query}\n\nProvide a detailed response based on the context."
-        
+        # Step 3: Prepare the full conversation for GPT-4o, including history
+        messages = history + [
+            {"role": "system", "content": f"Context: {context}"},
+            {"role": "user", "content": user_query},
+        ]
+
+        # Call GPT-4o with the conversation history and context
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt},
-            ]
+            messages=messages
         )
         
         # Extract the response from GPT-4o
@@ -79,7 +82,7 @@ def chat():
         return jsonify({"response": gpt_response})
     
     except openai.error.OpenAIError as e:
-        # Handle errors from the OpenAI API
+        # Handle errors from the OpenAI API (or specific to GPT-4o)
         return jsonify({"error": f"Error communicating with GPT-4o: {str(e)}"}), 500
     
     except Exception as e:
